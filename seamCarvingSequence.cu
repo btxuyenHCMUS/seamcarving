@@ -39,8 +39,7 @@ void readPnm(char * fileName, int &width, int &height, uchar3 * &pixels)
     fclose(f);
 }
 
-void writePnm(uint8_t * pixels, int width, int height, 
-    char * fileName)
+void writePnm(uint8_t * pixels, int numChannels, int width, int height, char * fileName)
 {
     FILE * f = fopen(fileName, "w");
     if (f == NULL)
@@ -49,7 +48,16 @@ void writePnm(uint8_t * pixels, int width, int height,
         exit(EXIT_FAILURE);
     }
 
-    fprintf(f, "P2\n");
+    if (numChannels == 1)
+		fprintf(f, "P2\n");
+	else if (numChannels == 3)
+		fprintf(f, "P3\n");
+	else
+	{
+		fclose(f);
+		printf("Cannot write %s\n", fileName);
+		exit(EXIT_FAILURE);
+	}
 
     fprintf(f, "%i\n%i\n255\n", width, height); 
 
@@ -71,6 +79,43 @@ void convertRgb2Gray(uchar3 * inPixels, int width, int height, uint8_t * &outPix
             uint8_t green = inPixels[idx].y;
             uint8_t blue = inPixels[idx].z;
             outPixels[idx] = 0.299f*red + 0.587f*green + 0.114f*blue;
+        }
+    }
+}
+
+void detectEdgImg(uint8_t * inPixels, int width, int height, uint8_t * &outPixels)
+{
+    int filterWidth = 3;
+    int threshold = 16; // Set threshold for filter noise with 6.25%
+    float xFilter[filterWidth * filterWidth] = {1, 0, -1, 2, 0, -2, 1, 0, -1};
+    float yFilter[filterWidth * filterWidth] = {1, 2, 1, 0, 0, 0, -1, -2, -1};
+
+    for (int rowImg = 0; rowImg < height; rowImg++)
+    {
+        for (int colImg = 0; colImg < width; colImg++)
+        {
+            float xSobel = 0;
+            float ySobel = 0;
+            for (int colFilter = 0; colFilter < filterWidth; colFilter++)
+            {
+                for (int rowFilter = 0; rowFilter < filterWidth; rowFilter++)
+                {
+                    float xFilterVal = xFilter[rowFilter * filterWidth + colFilter] / 4;
+                    float yFilterVal = yFilter[rowFilter * filterWidth + colFilter] / 4;
+                    int inRowImg = rowImg + rowFilter - filterWidth / 2;
+                    int inColImg = colImg + colFilter - filterWidth / 2;
+                    inRowImg = min(max(inRowImg, 0), height - 1);
+                    inColImg = min(max(inColImg, 0), width - 1);
+                    xSobel += xFilterVal * inPixels[inRowImg * width + inColImg];
+                    ySobel += yFilterVal * inPixels[inRowImg * width + inColImg];
+                }
+            }
+
+            outPixels[rowImg * width + colImg] = abs(xSobel) + abs(ySobel);
+            if (outPixels[rowImg * width + colImg] < threshold)
+            {
+                outPixels[rowImg * width + colImg] = 0;
+            }
         }
     }
 }
@@ -102,28 +147,18 @@ int main(int argc, char ** argv)
 	readPnm(argv[1], width, height, inPixels);
     printf("Image size (width x height): %i x %i\n\n", width, height);
     
-    // Set up a simple filter with sobel gradient
-    // TODO:
-	int filterWidth = 3;
-	float * filter = (float *)malloc(filterWidth * filterWidth * sizeof(float));
-	for (int filterR = 0; filterR < filterWidth; filterR++)
-	{
-		for (int filterC = 0; filterC < filterWidth; filterC++)
-		{
-			filter[filterR * filterWidth + filterC] = 1. / (filterWidth * filterWidth);
-		}
-    }
-    
     // Seam Carving input image using host
     // TODO:
-    uint8_t * hostOutPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
-    convertRgb2Gray(inPixels, width, height, hostOutPixels);
+    uint8_t * grayOutPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
+    uint8_t * edgeOutPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
+    convertRgb2Gray(inPixels, width, height, grayOutPixels);
+    detectEdgImg(grayOutPixels, width, height, edgeOutPixels);
 
     // Write results to files
     char * outFileNameBase = strtok(argv[2], "."); // Get rid of extension
-    writePnm(hostOutPixels, width, height, concatStr(outFileNameBase, "_host.pnm"));
+    writePnm(edgeOutPixels, 1, width, height, concatStr(outFileNameBase, "_host.pnm"));
 
     // Free memories
-    free(hostOutPixels);
-    free(filter);
+    free(edgeOutPixels);
+    free(grayOutPixels);
 }
