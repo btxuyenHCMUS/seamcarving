@@ -50,3 +50,9 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# File compiler
+seam
+
+# File intput/output
+*.pnm
