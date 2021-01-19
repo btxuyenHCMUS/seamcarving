@@ -196,14 +196,38 @@ void findSeamCarving(uint8_t * inPixels, int width, int height, int * &traces)
     free(energyTable);
 }
 
-void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels)
+void cutSeamCarvingImg(uint8_t * &inPixels, int &width, int height, int * traces)
 {
+    printf("=======%d=====\n", width);
+    for (int rowImg = 0; rowImg < height; rowImg++)
+    {
+        for (int col = traces[rowImg]; col < width - 1; col++)
+        {
+            inPixels[rowImg * width + col] = inPixels[rowImg * width + col + 1];
+        }
+    }
+    width--;
+}
+
+void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * &outPixels, int size)
+{
+    int maxCol = width;
+    int maxRow = height;
     uint8_t * grayOutPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
     uint8_t * edgeOutPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
-    int * traces = (int *)malloc(height * sizeof(int));
+    int ** traces = (int **)malloc(size * sizeof(int *));
+    for (int loop = 0; loop < size; loop++)
+    {
+        traces[loop] = (int *)malloc(height * sizeof(int));
+    }
     convertRgb2Gray(inPixels, width, height, grayOutPixels);
     detectEdgeImg(grayOutPixels, width, height, edgeOutPixels);
-    findSeamCarving(edgeOutPixels, width, height, traces);
+    for (int loop = 0; loop < size; loop++)
+    {
+        findSeamCarving(edgeOutPixels, maxCol, maxRow, traces[loop]);
+        cutSeamCarvingImg(edgeOutPixels, maxCol, maxRow, traces[loop]);
+    }
+
     for (int rowImg = 0; rowImg < height; rowImg++)
     {
         for (int colImg = 0; colImg < width; colImg++)
@@ -213,25 +237,41 @@ void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels
             outPixels[rowImg * width + colImg].z = inPixels[rowImg * width + colImg].z;
         }
     }
-    for (int row = 0; row < height; row++)
+
+    for (int loop = 0; loop < size; loop++)
     {
-        outPixels[traces[row]].x = 255;
-        outPixels[traces[row]].y = 0;
-        outPixels[traces[row]].z = 0;
+        for (int rowImg = 0; rowImg < height; rowImg++)
+        {
+            int col = traces[loop][rowImg] % (width - loop) + loop;
+            int idx = rowImg * width + col;
+            outPixels[idx].x = 255;
+            outPixels[idx].y = 0;
+            outPixels[idx].z = 0;
+        }
     }
 
     // Free memories
+    for (int loop = 0; loop < size; loop++)
+    {
+        free(traces[loop]);
+    }
+    free(traces);
     free(edgeOutPixels);
     free(grayOutPixels);
-    free(traces);
 }
 
 int main(int argc, char ** argv)
 {
-    if (argc != 3)
+    if (argc != 3 && argc != 4)
 	{
 		printf("The number of arguments is invalid\n");
 		return EXIT_FAILURE;
+    }
+
+    int size = 1;
+    if (argc == 4)
+    {
+        size = atoi(argv[3]);
     }
     
     // Read input image file
@@ -242,7 +282,7 @@ int main(int argc, char ** argv)
     
     // Seam Carving input image using host
     uchar3 * seamCarvingOutPixels = (uchar3 *)malloc(width * height * sizeof(uchar3));
-    seamCarvingImg(inPixels, width, height, seamCarvingOutPixels);
+    seamCarvingImg(inPixels, width, height, seamCarvingOutPixels, size);
 
     // Write results to files
     char * outFileNameBase = strtok(argv[2], "."); // Get rid of extension
