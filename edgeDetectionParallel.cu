@@ -119,19 +119,35 @@ void writePnm(uint8_t * pixels, int numChannels, int width, int height,
 
 	fclose(f);
 }
+void writeMatrix(uint8_t * pixels, int numChannels, int width, int height,
+		char * fileName)
+{
+	FILE * f = fopen(fileName, "w");
+
+	for (int i = 0; i < width * height * numChannels; i++)
+		{
+      fprintf(f, "%hhu", pixels[i]);
+      if (((i+1) % width == 0) && (i != 0))
+        fprintf(f, "\n");
+      else
+        fprintf(f, " ");
+    }
+	fclose(f);
+}
 
 __global__ void edgeDetectionKernel(uint8_t* inPixels, int width, int height,
 		float * filterX, float * filterY, int filterWidth,
 		uint8_t* outPixels)
 {
 	// TODO
+
   int c = threadIdx.x + blockIdx.x * blockDim.x;
 	int r = threadIdx.y + blockIdx.y * blockDim.y;// chỉ số phần tử pixle
   if (r < height && c < width) //check có cần làm hay không, thread ngoài biên thì không làm
   {
     int i = r * width + c;
-    float outx = 0;
-    float outy = 0;
+    float outx = 0.0f;
+    float outy = 0.0f;
     int iFilter = 0; //chỉ số phần tử ở filter
     for (int x = -1; x <= 1; x++)
       for (int y = -1; y <= 1; y++) //duyệt filter
@@ -143,8 +159,8 @@ __global__ void edgeDetectionKernel(uint8_t* inPixels, int width, int height,
         if (cy < 0) cy = 0;
         if (cy > width - 1) cy = width - 1; // ngoài biên thì lấy phần tử gần nhất
         int k = rx * width + cy;
-        outx += inPixels[k] * float(filterX[iFilter]) / 4;
-        outy += inPixels[k] * float(filterY[iFilter]) / 4;
+        outx += float(float(inPixels[k]) * float(filterX[iFilter]/4));
+        outy += float(float(inPixels[k]) * float(filterY[iFilter]/4));
 
         iFilter++;
       }
@@ -212,7 +228,7 @@ int main(int argc, char ** argv)
 	// Set up filter xSobel
 	float filterX [9]= {1, 0, -1, 2, 0, -2, 1, 0, -1};
   // Set up filter ySobel
-	float filterY [9]= {1, 2, 1, 0, 0, 0, -1, 2, -1};
+	float filterY [9]= {1, 2, 1, 0, 0, 0, -1, -2, -1};
 
 	// Blur input image using device
 	uint8_t * deviceOutPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
@@ -226,8 +242,9 @@ int main(int argc, char ** argv)
 
 	// Write results to files
 	char * name = argv[2];
+  //char * nameedge = "edge.txt";
 	writePnm(deviceOutPixels, 1, width, height, name);
-
+  //writeMatrix(deviceOutPixels, 1, width, height, name);
 	// Free memories
 	free(inPixels);
 	free(deviceOutPixels);
