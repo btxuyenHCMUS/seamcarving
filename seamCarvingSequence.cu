@@ -170,7 +170,7 @@ void findSeamCarving(uint8_t * inPixels, int width, int height, int * &traces)
     int index = 0;
     for (int col = 0; col < width; col++)
     {
-        if (minEnergy < energyTable[0][col][0])
+        if (minEnergy > energyTable[0][col][0])
         {
             minEnergy = energyTable[0][col][0];
             minPostion = col;
