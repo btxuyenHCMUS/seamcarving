@@ -210,7 +210,7 @@ void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels
         {
             outPixels[rowImg * width + colImg].x = inPixels[rowImg * width + colImg].x;
             outPixels[rowImg * width + colImg].y = inPixels[rowImg * width + colImg].y;
-            outPixels[rowImg * width + colImg].y = inPixels[rowImg * width + colImg].y;
+            outPixels[rowImg * width + colImg].z = inPixels[rowImg * width + colImg].z;
         }
     }
     for (int row = 0; row < height; row++)
