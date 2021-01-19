@@ -119,24 +119,8 @@ void writePnm(uint8_t * pixels, int numChannels, int width, int height,
 
 	fclose(f);
 }
-void writeMatrix(uint8_t * pixels, int numChannels, int width, int height,
-		char * fileName)
-{
-	FILE * f = fopen(fileName, "w");
 
-	for (int i = 0; i < width * height * numChannels; i++)
-		{
-      fprintf(f, "%hhu", pixels[i]);
-      if (((i+1) % width == 0) && (i != 0))
-        fprintf(f, "\n");
-      else
-        fprintf(f, " ");
-    }
-	fclose(f);
-}
-
-__global__ void edgeDetectionKernel(uint8_t* inPixels, int width, int height,
-		float * filterX, float * filterY, int filterWidth,
+__global__ void findSeamKernel(uint8_t* inPixels, int width, int height,		
 		uint8_t* outPixels)
 {
 	// TODO
