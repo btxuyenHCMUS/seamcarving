@@ -64,13 +64,13 @@ char * concatStr(const char * s1, const char * s2)
 	return result;
 }
 
-void setValAndPostionEnergy(int *** energyTable, int rowImg, int colImg, int width, int height, int &energy, int &position)
+void setValAndPostionEnergy(uint8_t * inPixels, int *** energyTable, int rowImg, int colImg, int width, int height, int &energy, int &position)
 {
     int energy_tmp = energyTable[rowImg + 1][colImg][0];
     int position_tmp = (rowImg + 1) * width + colImg;
     if (colImg - 1 >= 0)
     {
-        if (energy_tmp < energyTable[rowImg + 1][colImg - 1][0])
+        if (energy_tmp > energyTable[rowImg + 1][colImg - 1][0])
         {
             energy_tmp = energyTable[rowImg + 1][colImg - 1][0];
             position_tmp = (rowImg + 1) * width + colImg - 1;
@@ -78,13 +78,13 @@ void setValAndPostionEnergy(int *** energyTable, int rowImg, int colImg, int wid
     }
     if (colImg + 1 < height)
     {
-        if (energy_tmp < energyTable[rowImg + 1][colImg + 1][0])
+        if (energy_tmp > energyTable[rowImg + 1][colImg + 1][0])
         {
             energy_tmp = energyTable[rowImg + 1][colImg + 1][0];
             position_tmp = (rowImg + 1) * width + colImg + 1;
         }
     }
-    energy = energy_tmp;
+    energy = energy_tmp + inPixels[rowImg * width + colImg];
     position = position_tmp;
 }
 
@@ -161,7 +161,7 @@ void findSeamCarving(uint8_t * inPixels, int width, int height, int * &traces)
     {
         for (int colImg = 0; colImg < width; colImg++)
         {
-            setValAndPostionEnergy(energyTable, rowImg, colImg, width, height, energyTable[rowImg][colImg][0], energyTable[rowImg][colImg][1]);
+            setValAndPostionEnergy(inPixels, energyTable, rowImg, colImg, width, height, energyTable[rowImg][colImg][0], energyTable[rowImg][colImg][1]);
         }
     }
 
