@@ -64,7 +64,7 @@ char * concatStr(const char * s1, const char * s2)
 	return result;
 }
 
-void setValAndPostionEnergy(uint8_t * inPixels, int *** energyTable, int rowImg, int colImg, int width, int height, int &energy, int &position)
+void setValAndPostionEnergy(uint8_t * inPixels, int *** energyTable, int rowImg, int colImg, int width, int height)
 {
     int energy_tmp = energyTable[rowImg + 1][colImg][0];
     int position_tmp = (rowImg + 1) * width + colImg;
@@ -84,8 +84,8 @@ void setValAndPostionEnergy(uint8_t * inPixels, int *** energyTable, int rowImg,
             position_tmp = (rowImg + 1) * width + colImg + 1;
         }
     }
-    energy = energy_tmp + inPixels[rowImg * width + colImg];
-    position = position_tmp;
+    energyTable[rowImg][colImg][0] = energy_tmp + inPixels[rowImg * width + colImg];
+    energyTable[rowImg][colImg][1] = position_tmp;
 }
 
 void convertRgb2Gray(uchar3 * inPixels, int width, int height, uint8_t * &outPixels)
@@ -163,7 +163,7 @@ void findSeamCarving(uint8_t * inPixels, int width, int height, int * traces)
     {
         for (int colImg = 0; colImg < width; colImg++)
         {
-            setValAndPostionEnergy(inPixels, energyTable, rowImg, colImg, width, height, energyTable[rowImg][colImg][0], energyTable[rowImg][colImg][1]);
+            setValAndPostionEnergy(inPixels, energyTable, rowImg, colImg, width, height);
         }
     }
 
@@ -202,7 +202,7 @@ void cutSeamCarvingImg(uint8_t * inPixels, int width, int height, int * traces)
 {
     for (int row = height - 1; row >= 0; row--)
     {
-        for (int idx = traces[row]; idx < width * height - 1; idx++)
+        for (int idx = traces[row]; idx < width * height + height - 2 - row; idx++)
         {
             inPixels[idx] = inPixels[idx + 1];
         }
