@@ -196,17 +196,15 @@ void findSeamCarving(uint8_t * inPixels, int width, int height, int * &traces)
     free(energyTable);
 }
 
-void cutSeamCarvingImg(uint8_t * &inPixels, int &width, int height, int * traces)
+void cutSeamCarvingImg(uint8_t * inPixels, int width, int height, int * traces)
 {
-    printf("=======%d=====\n", width);
-    for (int rowImg = 0; rowImg < height; rowImg++)
+    for (int row = height - 1; row >= 0; row--)
     {
-        for (int col = traces[rowImg]; col < width - 1; col++)
+        for (int idx = traces[row]; idx < width * height - 1; idx++)
         {
-            inPixels[rowImg * width + col] = inPixels[rowImg * width + col + 1];
+            inPixels[idx] = inPixels[idx + 1];
         }
     }
-    width--;
 }
 
 void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * &outPixels, int size)
@@ -226,6 +224,7 @@ void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * &outPixel
     {
         findSeamCarving(edgeOutPixels, maxCol, maxRow, traces[loop]);
         cutSeamCarvingImg(edgeOutPixels, maxCol, maxRow, traces[loop]);
+        maxCol--;
     }
 
     for (int rowImg = 0; rowImg < height; rowImg++)
