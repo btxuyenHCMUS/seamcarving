@@ -108,7 +108,6 @@ void convertRgb2Gray(uchar3 * inPixels, int width, int height, uint8_t * &outPix
 void detectEdgeImg(uint8_t * inPixels, int width, int height, uint8_t * &outPixels)
 {
     int filterWidth = 3;
-    int threshold = 16; // Set threshold for filter noise with 6.25%
     float xFilter[filterWidth * filterWidth] = {1, 0, -1, 2, 0, -2, 1, 0, -1};
     float yFilter[filterWidth * filterWidth] = {1, 2, 1, 0, 0, 0, -1, -2, -1};
     outPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
