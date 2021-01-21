@@ -1,5 +1,37 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <time.h>
+
+struct CpuTimer
+{
+    clock_t start;
+    clock_t end;
+
+    CpuTimer()
+    {
+        // Constructor
+    }
+
+    ~CpuTimer()
+    {
+        // De-constructor
+    }
+
+    void Start()
+    {
+        start = clock();
+    }
+
+    void Stop()
+    {
+        end = clock();
+    }
+
+    double Elapsed()
+    {
+        return ((double) (end - start)) / CLOCKS_PER_SEC;
+    }
+};
 
 void readPnm(char * fileName, int &width, int &height, uchar3 * &pixels)
 {
@@ -219,6 +251,8 @@ void cutSeamCarvingRGBImg(uchar3 * inPixels, int width, int height, int * traces
 
 void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * &outPixels, int size)
 {
+    CpuTimer timer;
+    timer.Start();
     int maxCol = width;
     int maxRow = height;
     uint8_t * grayOutPixels, * edgeOutPixels;
@@ -245,6 +279,9 @@ void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * &outPixel
     // Free memories
     free(traces);
     free(edgeOutPixels);
+    timer.Stop();
+    double time = timer.Elapsed();
+    printf("Processing time (use host): %f s\n\n", time);
 }
 
 int main(int argc, char ** argv)
