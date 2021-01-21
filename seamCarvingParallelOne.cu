@@ -178,7 +178,7 @@ void setValAndPos(uint8_t * inPixels, EngeryPoint * energies, int rowImg, int co
 __global__ void convertRgb2GrayKernel(uchar3 * inPixels, int width, int height, uint8_t * outPixels)
 {
     int outPixelsR = blockIdx.x * blockDim.x + threadIdx.y;
-    int outPixelsC = blockIdx.y * blockDim.y + threadIdx.x;
+	int outPixelsC = blockIdx.y * blockDim.y + threadIdx.x;
     // Reminder: gray = 0.299*red + 0.587*green + 0.114*blue
     if (outPixelsR < height && outPixelsC < width)
     {
@@ -284,7 +284,7 @@ void cutSeamCarvingRGBImg(uchar3 * inPixels, int width, int height, int * traces
     }
 }
 
-void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels, int size, dim3 blockSize=dim3(1, 1))
+void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels, int size)
 {
     CpuTimer timer;
     timer.Start();
@@ -301,7 +301,8 @@ void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels
     CHECK(cudaMalloc(&d_outPixels, width * height * sizeof(uint8_t)));
     CHECK(cudaMemcpy(d_inPixels, inPixels, width * height * sizeof(uchar3), cudaMemcpyHostToDevice));
     // Call kernel
-    dim3 gridSize((width-1)/blockSize.x + 1, (height-1)/blockSize.y + 1);
+    dim3 blockSize(32, 32);
+    dim3 gridSize((height-1)/blockSize.x + 1, (width-1)/blockSize.y + 1);
     printf("block size %ix%i, grid size %ix%i\n", blockSize.x, blockSize.y, gridSize.x, gridSize.y);
     timerGpu.Start();
     convertRgb2GrayKernel<<<gridSize, blockSize>>>(d_inPixels, width, height, d_outPixels);
@@ -310,7 +311,7 @@ void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels
 	printf("ConvertRGP2Gray kernel time: %f ms\n", timekernel);
     cudaDeviceSynchronize();
     CHECK(cudaGetLastError());
-    CHECK(cudaMemcpy(outPixels, d_outPixels, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(grayOutPixels, d_outPixels, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
     CHECK(cudaFree(d_inPixels));
     CHECK(cudaFree(d_outPixels));
     /*---- Ended block doing convert RGP to gray with parallel ---*/
@@ -365,9 +366,8 @@ int main(int argc, char ** argv)
     }
     
     // Seam Carving input image using device
-    dim3 blockSize(32, 32); // Default
     uchar3 * seamCarvingOutPixels = (uchar3 *)malloc((width - size) * height * sizeof(uchar3));
-    seamCarvingImg(inPixels, width, height, seamCarvingOutPixels, size, blockSize);
+    seamCarvingImg(inPixels, width, height, seamCarvingOutPixels, size);
 
     // Write results to files
     char * outFileNameBase = strtok(argv[2], "."); // Get rid of extension
