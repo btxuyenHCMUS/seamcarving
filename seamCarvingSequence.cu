@@ -102,28 +102,28 @@ char * concatStr(const char * s1, const char * s2)
 	return result;
 }
 
-void setValAndPostionEnergy(uint8_t * inPixels, EngeryPoint * energyTable, int rowImg, int colImg, int width, int height)
+void setValAndPos(uint8_t * inPixels, EngeryPoint * energies, int rowImg, int colImg, int width, int height)
 {
-    int energy_tmp = energyTable[(rowImg + 1) * width + colImg].val;
-    int position_tmp = (rowImg + 1) * width + colImg;
+    int energy = energies[(rowImg + 1) * width + colImg].val;
+    int pos_tmp = (rowImg + 1) * width + colImg;
     if (colImg - 1 >= 0)
     {
-        if (energy_tmp > energyTable[(rowImg + 1) * width + colImg - 1].val)
+        if (energy > energies[(rowImg + 1) * width + colImg - 1].val)
         {
-            energy_tmp = energyTable[(rowImg + 1) * width + colImg - 1].val;
-            position_tmp = (rowImg + 1) * width + colImg - 1;
+            energy = energies[(rowImg + 1) * width + colImg - 1].val;
+            pos_tmp = (rowImg + 1) * width + colImg - 1;
         }
     }
     if (colImg + 1 < height)
     {
-        if (energy_tmp > energyTable[(rowImg + 1) * width + colImg + 1].val)
+        if (energy > energies[(rowImg + 1) * width + colImg + 1].val)
         {
-            energy_tmp = energyTable[(rowImg + 1) * width + colImg + 1].val;
-            position_tmp = (rowImg + 1) * width + colImg + 1;
+            energy = energies[(rowImg + 1) * width + colImg + 1].val;
+            pos_tmp = (rowImg + 1) * width + colImg + 1;
         }
     }
-    energyTable[rowImg * width + colImg].val = energy_tmp + inPixels[rowImg * width + colImg];
-    energyTable[rowImg * width + colImg].prePos = position_tmp;
+    energies[rowImg * width + colImg].val = energy + inPixels[rowImg * width + colImg];
+    energies[rowImg * width + colImg].prePos = pos_tmp;
 }
 
 void convertRgb2Gray(uchar3 * inPixels, int width, int height, uint8_t * &outPixels)
@@ -178,41 +178,41 @@ void detectEdgeImg(uint8_t * inPixels, int width, int height, uint8_t * &outPixe
 
 void findSeamCarving(uint8_t * inPixels, int width, int height, int * traces)
 {
-    EngeryPoint * energyTable = (EngeryPoint *)malloc(width * height * sizeof(EngeryPoint));
+    EngeryPoint * energies = (EngeryPoint *)malloc(width * height * sizeof(EngeryPoint));
     for (int colImg = 0; colImg < width; colImg++)
     {
-        energyTable[(height - 1) * width + colImg].val = inPixels[(height - 1) * width + colImg];
-        energyTable[(height - 1) * width + colImg].prePos = -1;
+        energies[(height - 1) * width + colImg].val = inPixels[(height - 1) * width + colImg];
+        energies[(height - 1) * width + colImg].prePos = -1;
     }
     for (int rowImg = height - 2; rowImg >= 0; rowImg--)
     {
         for (int colImg = 0; colImg < width; colImg++)
         {
-            setValAndPostionEnergy(inPixels, energyTable, rowImg, colImg, width, height);
+            setValAndPos(inPixels, energies, rowImg, colImg, width, height);
         }
     }
 
-    int minEnergy = energyTable[0].val;
-    int minPostion = 0;
+    int firstEgy = energies[0].val;
+    int firstPos = 0;
     int index = 0;
     for (int col = 0; col < width; col++)
     {
-        if (minEnergy > energyTable[col].val)
+        if (firstEgy > energies[col].val)
         {
-            minEnergy = energyTable[col].val;
-            minPostion = col;
+            firstEgy = energies[col].val;
+            firstPos = col;
         }
     }
 
     while (index < height)
     {
-        traces[index] = minPostion;
-        minPostion = energyTable[minPostion].prePos;
+        traces[index] = firstPos;
+        firstPos = energies[firstPos].prePos;
         index++;
     }
 
     // free energy tables
-    free(energyTable);
+    free(energies);
 }
 
 void cutSeamCarvingImg(uint8_t * inPixels, int width, int height, int * traces)
