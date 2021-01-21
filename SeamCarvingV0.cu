@@ -265,61 +265,7 @@ void checkSeam(uint8_t *map, uint8_t *pixels, int width, int height, int *line)
     pixels[r*3*width+3*k+2] = 0;
   }
 }
-void readPnmUchar3(char * fileName,
-		int &width, int &height, uchar3 * &pixels)
-{
-	FILE * f = fopen(fileName, "r");
-	if (f == NULL)
-	{
-		printf("Cannot read %s\n", fileName);
-		exit(EXIT_FAILURE);
-	}
 
-	char type[3];
-	fscanf(f, "%s", type);
-
-	if (strcmp(type, "P3") != 0) // In this exercise, we don't touch other types
-	{
-		fclose(f);
-		printf("Cannot read %s\n", fileName);
-		exit(EXIT_FAILURE);
-	}
-
-	fscanf(f, "%i", &width);
-	fscanf(f, "%i", &height);
-
-	int max_val;
-	fscanf(f, "%i", &max_val);
-	if (max_val > 255) // In this exercise, we assume 1 byte per value
-	{
-		fclose(f);
-		printf("Cannot read %s\n", fileName);
-		exit(EXIT_FAILURE);
-	}
-
-	pixels = (uchar3 *)malloc(width * height * sizeof(uchar3));
-	for (int i = 0; i < width * height; i++)
-		fscanf(f, "%hhu%hhu%hhu", &pixels[i].x, &pixels[i].y, &pixels[i].z);
-
-	fclose(f);
-}
-void writePnmUchar3(uchar3 * pixels, int width, int height,
-		char * fileName)
-{
-	FILE * f = fopen(fileName, "w");
-	if (f == NULL)
-	{
-		printf("Cannot write %s\n", fileName);
-		exit(EXIT_FAILURE);
-	}
-
-	fprintf(f, "P3\n%i\n%i\n255\n", width, height);
-
-	for (int i = 0; i < width * height; i++)
-		fprintf(f, "%hhu\n%hhu\n%hhu\n", pixels[i].x, pixels[i].y, pixels[i].z);
-
-	fclose(f);
-}
 char * concatStr(const char * s1, const char * s2)
 {
     char * result = (char *)malloc(strlen(s1) + strlen(s2) + 1);
@@ -327,13 +273,58 @@ char * concatStr(const char * s1, const char * s2)
     strcat(result, s2);
     return result;
 }
+__global__ void cutSeamKernel(uint8_t*inPixels, uint8_t *outPixels, uint8_t *inEdges, uint8_t *outEdges,
+  int width, int height, int k, int *line)
+{
+  int c = threadIdx.x + blockIdx.x*blockDim.x;
+
+  int r = 0;
+  if (c<width-1)
+  {
+    if (c<k)
+      {
+        outPixels[3 * c] = inPixels[3 * c + r * 3 * width];
+        outEdges[3 * c] = inEdges[3 * c + r * 3 * width];
+      }
+    else
+      {
+        outPixels[3 * c] = inPixels[3 * (c + 1) + r * 3 * width];
+        outEdges[3 * c] = inEdges[3 * (c + 1) + r * 3 * width];
+      }
+    while (r<height)
+    {
+        r++;
+        k += line[(r - 1) * width + k];
+        if (c < k)
+          {
+            outPixels[3 * c + r * 3 * width] = inPixels[3 * (c + r) + r * 3 * width];
+            outEdges[3 * c + r * 3 * width] = inEdges[3 * (c + r) + r * 3 * width];
+          }
+        else
+          {
+            outPixels[3 * c + r * 3 *width] = inPixels[3 * (c + r + 1) + r * 3 * width];
+            outEdges[3 * c + r * 3 * width] = inEdges[3 * (c + r + 1) + r * 3 * width];
+          }
+    }
+  }
+}
+void cutSeam(uint8_t *map, uint8_t *inPixels, uint8_t *outPixels, uint8_t *inEdges, uint8_t *outEdges,
+   int width, int height, int* seam, dim3 blockSize = dim3(1,1))
+{
+  int k = 0;
+  for (int c = 0; c < width; c++)
+    {
+      if (map[c]<map[k])
+      {
+        k = c;
+      }
+    }
+  dim3 gridSize((width - 1)/blockSize.x + 1, (height - 1)/blockSize.y + 1);
+  cutSeamKernel<<<gridSize, blockSize>>>(inPixels, outPixels, inEdges, outEdges, width - 1, height, k, seam);
+}
+
 int main(int argc, char ** argv)
 {
-	if (argc != 3 && argc != 5)
-	{
-		printf("The number of arguments is invalid\n");
-		return EXIT_FAILURE;
-	}
   GpuTimer timer;
   timer.Start();
   cudaDeviceProp devProp;
@@ -345,24 +336,26 @@ int main(int argc, char ** argv)
 	int numChannels, width, height;
 	uint8_t * inPixels;
 	readPnm(argv[1], numChannels, width, height, inPixels);
-  uchar3 * outPixels;
-	readPnmUchar3(argv[1], width, height, outPixels);
 	if (numChannels != 3)
 		return EXIT_FAILURE; // Input image must be RGB
 	printf("RGB Image size (width x height): %i x %i\n\n", width, height);
   //allocates device memories
   uint8_t *d_inPixels;
+  uint8_t *d_inPixels2;
   uint8_t *d_grayPixels;
   float *d_filterX;
   float *d_filterY;
   uint8_t *d_edgePixels;
+  uint8_t *d_edgePixels2;
   uint8_t *d_map;
   int *d_seam;
   CHECK(cudaMalloc(&d_inPixels, height * width * 3 * sizeof(uint8_t)));
+  CHECK(cudaMalloc(&d_inPixels2, height * width * 3 * sizeof(uint8_t)));
 	CHECK(cudaMalloc(&d_grayPixels, height * width * sizeof(uint8_t)));
   CHECK(cudaMalloc(&d_filterX, 9 * sizeof(float)));
   CHECK(cudaMalloc(&d_filterY, 9 * sizeof(float)));
   CHECK(cudaMalloc(&d_edgePixels, width * height * sizeof(uint8_t)));
+  CHECK(cudaMalloc(&d_edgePixels2, width * height * sizeof(uint8_t)));
   CHECK(cudaMalloc(&d_map, width * height * sizeof(uint8_t)));
   CHECK(cudaMalloc(&d_seam, width * height * sizeof(int)));
 
@@ -376,29 +369,45 @@ int main(int argc, char ** argv)
 	// Convert RGB to grayscale using device
 	dim3 blockSize(32, 32); // Default
   uint8_t * tmp = (uint8_t *)malloc(width * height * sizeof(uint8_t));
-	convertRgb2Gray(d_inPixels, d_grayPixels, width, height, blockSize);
-
+  char * outFileNameBase = strtok(argv[2], ".");
+  // converse RGB image to Gray image
+  convertRgb2Gray(d_inPixels, d_grayPixels, width, height, blockSize);
   // detect edge using device
   detectionEdge(d_grayPixels, d_edgePixels, width, height, d_filterX, d_filterY, 3, blockSize);
-  //CHECK(cudaMemcpy(tmp, d_edgePixels, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
-  //writePnm(tmp, 1, width, height, argv[2]);
-  findSeam(d_edgePixels, d_map, d_seam, width, height, 512);
-  uint8_t * map = (uint8_t *)malloc(width * height * sizeof(uint8_t));
-  int *seam = (int*)malloc(width * height * sizeof(int));
-  CHECK(cudaMemcpy(map, d_map, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
-  CHECK(cudaMemcpy(seam, d_seam, width * height * sizeof(int), cudaMemcpyDeviceToHost));
-  checkSeam(map, inPixels, width, height, seam);
-  writePnm(inPixels, 3, width, height, concatStr(argv[2], ".pnm"));
+  uint8_t * map = (uint8_t *)malloc(width * sizeof(uint8_t));
+  uint8_t nSeams = atoi(argv[3]);
+  for (int ind = 0; ind < nSeams; ind++)
+  {
+    // find a seam using device
+    if (ind % 2 == 0)
+      findSeam(d_edgePixels, d_map, d_seam, width, height, 512);
+    else findSeam(d_edgePixels2, d_map, d_seam, width, height, 512);
+    CHECK(cudaMemcpy(map, d_map, width * sizeof(uint8_t), cudaMemcpyDeviceToHost));
 
+    if (ind % 2 == 0)
+      cutSeam(map, d_inPixels, d_inPixels2, d_edgePixels, d_edgePixels2, width, height, d_seam, 512);
+    else cutSeam(map, d_inPixels2, d_inPixels, d_edgePixels2, d_edgePixels, width, height, d_seam, 512);
+    width--;
+  }
+  if (nSeams % 2 == 0)
+    {
+      CHECK(cudaMemcpy(inPixels, d_inPixels, width * 3 * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+    }
+  else
+    {
+      CHECK(cudaMemcpy(inPixels, d_inPixels2, width * 3 * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+    }
+  writePnm(inPixels, 3, width, height, argv[2]);
 	// Free memories
 	free(map);
-	free(seam);
   free(inPixels);
   cudaFree(d_inPixels);
+  cudaFree(d_inPixels2);
   cudaFree(d_grayPixels);
   cudaFree(d_filterX);
   cudaFree(d_filterY);
   cudaFree(d_edgePixels);
+  cudaFree(d_edgePixels2);
   cudaFree(d_map);
   cudaFree(d_seam);
 }
