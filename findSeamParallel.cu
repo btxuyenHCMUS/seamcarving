@@ -259,21 +259,19 @@ void checkSeam(uint8_t *map, uchar3 *pixels, int width, int height, int *line)
       {
         k = c;
       }
-      printf("%i", map[c]);
     }
+  printf("%i %i\n",k, map[k]);
   pixels[k].x = 255;
   pixels[k].y = 0;
   pixels[k].z = 0;
   int r = 0;
-  printf("%i %i\n", r, k);
-  while (r < height)
+    while (r < height)
   {
     r++;
     k +=  line[(r-1)*width+k];
     pixels[r*width+k].x = 255;
     pixels[r*width+k].y = 0;
     pixels[r*width+k].z = 0;
-    printf("%i %i\n", r, k);
   }
 }
 
@@ -291,13 +289,12 @@ int main(int argc, char ** argv)
 		// Blur input image using device
 	uint8_t * map = (uint8_t *)malloc(width * height * sizeof(uint8_t));
   int *line = (int*)malloc(width * height * sizeof(int));
-	dim3 blockSize(512, 512); // Default
 	if (argc == 6)
 	{
 		blockSize.x = atoi(argv[4]);
 		blockSize.y = atoi(argv[5]);
 	}
-	findSeam(gray, width, height, map, line, 512);
+  findSeam(gray, width, height, map, line, 512);
   checkSeam(map, inPixels, width, height, line);
 	// Write results to files
 	char * name = argv[3];
