@@ -134,11 +134,7 @@ void detectEdgeImg(uint8_t * inPixels, int width, int height, uint8_t * &outPixe
                 }
             }
 
-            outPixels[rowImg * width + colImg] = abs(xSobel) + abs(ySobel);
-            if (outPixels[rowImg * width + colImg] < threshold)
-            {
-                outPixels[rowImg * width + colImg] = 0;
-            }
+            outPixels[rowImg * width + colImg] = sqrt(xSobel * xSobel + ySobel * ySobel);
         }
     }
 }
