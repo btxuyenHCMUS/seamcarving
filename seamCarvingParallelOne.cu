@@ -189,6 +189,35 @@ __global__ void convertRgb2GrayKernel(uchar3 * inPixels, int width, int height, 
     }
 }
 
+__global__ void detectEdgeImgkernel(uint8_t * inPixels, int width, int height, float * xFilter, float * yFilter, int filterWidth, uint8_t * outPixels)
+{
+    extern __shared__ uint8_t s_inPixels[];
+	int outPixelsR = blockIdx.x * blockDim.x + threadIdx.y;
+    int outPixelsC = blockIdx.y * blockDim.y + threadIdx.x;
+    
+    if (outPixelsC < width && outPixelsR < height)
+    {
+        float xSobel = 0;
+        float ySobel = 0;
+        for (int filterC = 0; filterC < filterWidth; filterC++)
+        {
+            for (int filterR = 0; filterR < filterWidth; filterR++)
+            {
+                float xFilterVal = xFilter[filterR * filterWidth + filterC] / 4;
+                float yFilterVal = yFilter[filterR * filterWidth + filterC] / 4;
+                int inPixelsC = outPixelsC + filterC - filterWidth / 2;
+                int inPixelsR = outPixelsR + filterR - filterWidth / 2;
+                inPixelsC = min(max(inPixelsC, 0), width - 1);
+                inPixelsR = min(max(inPixelsR, 0), height - 1);
+                uint8_t inPixel = inPixels[inPixelsR * width + inPixelsC];
+                xSobel += inPixel * xFilterVal;
+                ySobel += inPixel * yFilterVal;
+            }
+        }
+        outPixels[outPixelsR * width + outPixelsC] = sqrt(xSobel * xSobel + ySobel * ySobel);
+    }
+}
+
 void detectEdgeImg(uint8_t * inPixels, int width, int height, uint8_t * outPixels)
 {
     int filterWidth = 3;
@@ -290,33 +319,52 @@ void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels
     timer.Start();
     int maxCol = width;
     int maxRow = height;
-    uint8_t * grayOutPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
     uint8_t * edgeOutPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
     int * traces = (int *)malloc(height * sizeof(int));
     /*---- This is block convert RGP to gray with parallel ----*/
     GpuTimer timerGpu;
     uchar3 * d_inPixels;
-    uint8_t * d_outPixels;
+    uint8_t * d_outGrayPixels;
     CHECK(cudaMalloc(&d_inPixels, width * height * sizeof(uchar3)));
-    CHECK(cudaMalloc(&d_outPixels, width * height * sizeof(uint8_t)));
+    CHECK(cudaMalloc(&d_outGrayPixels, width * height * sizeof(uint8_t)));
     CHECK(cudaMemcpy(d_inPixels, inPixels, width * height * sizeof(uchar3), cudaMemcpyHostToDevice));
     // Call kernel
     dim3 blockSize(32, 32);
     dim3 gridSize((height-1)/blockSize.x + 1, (width-1)/blockSize.y + 1);
     printf("block size %ix%i, grid size %ix%i\n", blockSize.x, blockSize.y, gridSize.x, gridSize.y);
     timerGpu.Start();
-    convertRgb2GrayKernel<<<gridSize, blockSize>>>(d_inPixels, width, height, d_outPixels);
+    convertRgb2GrayKernel<<<gridSize, blockSize>>>(d_inPixels, width, height, d_outGrayPixels);
     timerGpu.Stop();
     float timekernel = timerGpu.Elapsed();
 	printf("ConvertRGP2Gray kernel time: %f ms\n", timekernel);
     cudaDeviceSynchronize();
     CHECK(cudaGetLastError());
-    CHECK(cudaMemcpy(grayOutPixels, d_outPixels, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
     CHECK(cudaFree(d_inPixels));
-    CHECK(cudaFree(d_outPixels));
     /*---- Ended block doing convert RGP to gray with parallel ---*/
-    detectEdgeImg(grayOutPixels, width, height, edgeOutPixels);
-    free(grayOutPixels);
+    /*---- This is block processing detect Edge Img parallel ----*/
+    int filterWidth = 3;
+    float xFilter[filterWidth * filterWidth] = {1, 0, -1, 2, 0, -2, 1, 0, -1};
+    float yFilter[filterWidth * filterWidth] = {1, 2, 1, 0, 0, 0, -1, -2, -1};
+    float * d_xFilter, * d_yFilter;
+    uint8_t * d_outEdgePixels;
+    CHECK(cudaMalloc(&d_outEdgePixels, width * height * sizeof(uint8_t)));
+    CHECK(cudaMalloc(&d_xFilter, filterWidth * filterWidth * sizeof(float)));
+    CHECK(cudaMalloc(&d_yFilter, filterWidth * filterWidth * sizeof(float)));
+    CHECK(cudaMemcpy(d_xFilter, xFilter, filterWidth * filterWidth * sizeof(float), cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_yFilter, yFilter, filterWidth * filterWidth * sizeof(float), cudaMemcpyHostToDevice));
+    timerGpu.Start();
+    detectEdgeImgkernel<<<gridSize, blockSize>>>(d_outGrayPixels, width, height, d_xFilter, d_yFilter, filterWidth, d_outEdgePixels);
+    timerGpu.Stop();
+    timekernel = timerGpu.Elapsed();
+	printf("DetectEgdeImg kernel time: %f ms\n", timekernel);
+    cudaDeviceSynchronize();
+    CHECK(cudaGetLastError());
+    CHECK(cudaMemcpy(edgeOutPixels, d_outEdgePixels, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+    CHECK(cudaFree(d_xFilter));
+    CHECK(cudaFree(d_yFilter));
+    CHECK(cudaFree(d_outEdgePixels));
+    CHECK(cudaFree(d_outGrayPixels));
+    /*---- Ended block doing detect Edge Img parallel ----*/
     for (int loop = 0; loop < size; loop++)
     {
         findSeamCarving(edgeOutPixels, maxCol, maxRow, traces);
