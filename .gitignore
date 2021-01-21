@@ -53,6 +53,7 @@ dkms.conf
 
 # File compiler
 seam
+seam2
 
 # File intput/output
 *.pnm

@@ -1,6 +1,17 @@
 #include <stdio.h>
 #include <stdint.h>
-#include <time.h>
+
+#define CHECK(call)\
+{\
+	const cudaError_t error = call;\
+	if (error != cudaSuccess)\
+	{\
+		fprintf(stderr, "Error: %s:%d, ", __FILE__, __LINE__);\
+		fprintf(stderr, "code: %d, reason: %s\n", error,\
+				cudaGetErrorString(error));\
+		exit(EXIT_FAILURE);\
+	}\
+}
 
 struct CpuTimer
 {
@@ -126,19 +137,17 @@ void setValAndPos(uint8_t * inPixels, EngeryPoint * energies, int rowImg, int co
     energies[rowImg * width + colImg].prePos = pos_tmp;
 }
 
-void convertRgb2Gray(uchar3 * inPixels, int width, int height, uint8_t * outPixels)
+__global__ void convertRgb2GrayKernel(uchar3 * inPixels, int width, int height, uint8_t * outPixels)
 {
+    int outPixelsR = blockIdx.x * blockDim.x + threadIdx.y;
+    int outPixelsC = blockIdx.y * blockDim.y + threadIdx.x;
     // Reminder: gray = 0.299*red + 0.587*green + 0.114*blue
-    for (int rowImg = 0; rowImg < height; rowImg++)
+    if (outPixelsR < height && outPixelsC < width)
     {
-        for (int colImg = 0; colImg < width; colImg++)
-        {
-            int idx = rowImg * width + colImg;
-            uint8_t red = inPixels[idx].x;
-            uint8_t green = inPixels[idx].y;
-            uint8_t blue = inPixels[idx].z;
-            outPixels[idx] = 0.299f*red + 0.587f*green + 0.114f*blue;
-        }
+        uint8_t red = inPixels[outPixelsR * width + outPixelsC].x;
+        uint8_t green = inPixels[outPixelsR * width + outPixelsC].y;
+        uint8_t blue = inPixels[outPixelsR * width + outPixelsC].z;
+        outPixels[outPixelsR * width + outPixelsC] = 0.299f*red + 0.587f*green + 0.114f*blue;
     }
 }
 
@@ -237,7 +246,7 @@ void cutSeamCarvingRGBImg(uchar3 * inPixels, int width, int height, int * traces
     }
 }
 
-void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels, int size)
+void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels, int size, dim3 blockSize=dim3(1, 1))
 {
     CpuTimer timer;
     timer.Start();
@@ -246,7 +255,22 @@ void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels
     uint8_t * grayOutPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
     uint8_t * edgeOutPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
     int * traces = (int *)malloc(height * sizeof(int));
-    convertRgb2Gray(inPixels, width, height, grayOutPixels);
+    /*---- This is block convert RGP to gray with parallel ----*/
+    uchar3 * d_inPixels;
+    uint8_t * d_outPixels;
+    CHECK(cudaMalloc(&d_inPixels, width * height * sizeof(uchar3)));
+    CHECK(cudaMalloc(&d_outPixels, width * height * sizeof(uint8_t)));
+    CHECK(cudaMemcpy(d_inPixels, inPixels, width * height * sizeof(uchar3), cudaMemcpyHostToDevice));
+    // Call kernel
+    dim3 gridSize((width-1)/blockSize.x + 1, (height-1)/blockSize.y + 1);
+    printf("block size %ix%i, grid size %ix%i\n", blockSize.x, blockSize.y, gridSize.x, gridSize.y);
+    convertRgb2GrayKernel<<<gridSize, blockSize>>>(d_inPixels, width, height, d_outPixels);
+    cudaDeviceSynchronize();
+    CHECK(cudaGetLastError());
+    CHECK(cudaMemcpy(outPixels, d_outPixels, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+    CHECK(cudaFree(d_inPixels));
+    CHECK(cudaFree(d_outPixels));
+    /*---- Ended block doing convert RGP to gray with parallel ---*/
     detectEdgeImg(grayOutPixels, width, height, edgeOutPixels);
     free(grayOutPixels);
     for (int loop = 0; loop < size; loop++)
@@ -297,13 +321,14 @@ int main(int argc, char ** argv)
         return EXIT_FAILURE;
     }
     
-    // Seam Carving input image using host
+    // Seam Carving input image using device
+    dim3 blockSize(32, 32); // Default
     uchar3 * seamCarvingOutPixels = (uchar3 *)malloc((width - size) * height * sizeof(uchar3));
-    seamCarvingImg(inPixels, width, height, seamCarvingOutPixels, size);
+    seamCarvingImg(inPixels, width, height, seamCarvingOutPixels, size, blockSize);
 
     // Write results to files
     char * outFileNameBase = strtok(argv[2], "."); // Get rid of extension
-    writePnm(seamCarvingOutPixels, width - size, height, concatStr(outFileNameBase, "_host.pnm"));
+    writePnm(seamCarvingOutPixels, width - size, height, concatStr(outFileNameBase, "_device.pnm"));
 
     // Free memories
     free(seamCarvingOutPixels);
