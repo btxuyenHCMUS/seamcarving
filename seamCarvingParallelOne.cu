@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <time.h>
 
 #define CHECK(call)\
 {\
@@ -41,6 +42,43 @@ struct CpuTimer
     double Elapsed()
     {
         return ((double) (end - start)) / CLOCKS_PER_SEC;
+    }
+};
+
+struct GpuTimer
+{
+    cudaEvent_t start;
+    cudaEvent_t stop;
+
+    GpuTimer()
+    {
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+    }
+
+    ~GpuTimer()
+    {
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+    }
+
+    void Start()
+    {
+        cudaEventRecord(start, 0);
+        cudaEventSynchronize(start);
+    }
+
+    void Stop()
+    {
+        cudaEventRecord(stop, 0);
+    }
+
+    float Elapsed()
+    {
+        float elapsed;
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&elapsed, start, stop);
+        return elapsed;
     }
 };
 
@@ -256,6 +294,7 @@ void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels
     uint8_t * edgeOutPixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
     int * traces = (int *)malloc(height * sizeof(int));
     /*---- This is block convert RGP to gray with parallel ----*/
+    GpuTimer timerGpu;
     uchar3 * d_inPixels;
     uint8_t * d_outPixels;
     CHECK(cudaMalloc(&d_inPixels, width * height * sizeof(uchar3)));
@@ -264,7 +303,11 @@ void seamCarvingImg(uchar3 * inPixels, int width, int height, uchar3 * outPixels
     // Call kernel
     dim3 gridSize((width-1)/blockSize.x + 1, (height-1)/blockSize.y + 1);
     printf("block size %ix%i, grid size %ix%i\n", blockSize.x, blockSize.y, gridSize.x, gridSize.y);
+    timerGpu.Start();
     convertRgb2GrayKernel<<<gridSize, blockSize>>>(d_inPixels, width, height, d_outPixels);
+    timerGpu.Stop();
+    float timekernel = timerGpu.Elapsed();
+	printf("ConvertRGP2Gray kernel time: %f ms\n", timekernel);
     cudaDeviceSynchronize();
     CHECK(cudaGetLastError());
     CHECK(cudaMemcpy(outPixels, d_outPixels, width * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
