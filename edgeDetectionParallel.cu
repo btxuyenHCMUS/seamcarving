@@ -159,8 +159,8 @@ __global__ void edgeDetectionKernel(uint8_t* inPixels, int width, int height,
         if (cy < 0) cy = 0;
         if (cy > width - 1) cy = width - 1; // ngoài biên thì lấy phần tử gần nhất
         int k = rx * width + cy;
-        outx += float(float(inPixels[k]) * float(filterX[iFilter]/4));
-        outy += float(float(inPixels[k]) * float(filterY[iFilter]/4));
+        outx += float(float(inPixels[k]) * float(filterX[iFilter]));
+        outy += float(float(inPixels[k]) * float(filterY[iFilter]));
 
         iFilter++;
       }
@@ -242,9 +242,9 @@ int main(int argc, char ** argv)
 
 	// Write results to files
 	char * name = argv[2];
-  //char * nameedge = "edge.txt";
+  char * nameedge = "edge.txt";
 	writePnm(deviceOutPixels, 1, width, height, name);
-  //writeMatrix(deviceOutPixels, 1, width, height, name);
+  writeMatrix(deviceOutPixels, 1, width, height, nameedge);
 	// Free memories
 	free(inPixels);
 	free(deviceOutPixels);

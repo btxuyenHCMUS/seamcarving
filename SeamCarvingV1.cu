@@ -251,7 +251,7 @@ void checkSeam(uint8_t *map, uint8_t *pixels, int width, int height, int *line)
         k = c;
       }
     }
-  //printf("%i %i\n",k, map[k]);
+  printf("%i %i\n",k, map[k]);
   pixels[3*k] = 255;
   pixels[3*k+1] = 0;
   pixels[3*k+2] = 0;
@@ -268,7 +268,7 @@ void checkSeam(uint8_t *map, uint8_t *pixels, int width, int height, int *line)
 }
 
 __global__ void cutSeamKernel(uint8_t*inPixels, uint8_t *outPixels, uint8_t *inEdges, uint8_t *outEdges,
-  int width, int height, int k, int *line)
+  int width, int height, int k, int *seam)
 {
   int c = threadIdx.x + blockIdx.x*blockDim.x;
   int r = 0;
@@ -276,8 +276,7 @@ __global__ void cutSeamKernel(uint8_t*inPixels, uint8_t *outPixels, uint8_t *inE
   {
     while (r<height)
     {
-
-        if (c + r < k)
+					if (c + r < k)
           {
             outPixels[3 * c + r * 3 * width] = inPixels[3 * (c + r) + r * 3 * width];
             outPixels[3 * c + r * 3 * width+1] = inPixels[3 * (c + r) + r * 3 * width+1];
@@ -291,7 +290,8 @@ __global__ void cutSeamKernel(uint8_t*inPixels, uint8_t *outPixels, uint8_t *inE
             outPixels[3 * c + r * 3 *width+2] = inPixels[3 * (c + r + 1) + r * 3 * width+2];
             outEdges[c + r * width] = inEdges[(c + r + 1) + r * width];
           }
-        k += line[r * width + k];
+
+        k += seam[r * width + k];
         r++;
     }
   }
@@ -307,7 +307,6 @@ void cutSeam(uint8_t *map, uint8_t *inPixels, uint8_t *outPixels, uint8_t *inEdg
         k = c;
       }
     }
-	//printf("%i\n",k);
   dim3 gridSize((width - 1)/blockSize.x + 1, (height - 1)/blockSize.y + 1);
   cutSeamKernel<<<gridSize, blockSize>>>(inPixels, outPixels, inEdges, outEdges, width, height, k, seam);
 }
@@ -334,7 +333,6 @@ int main(int argc, char ** argv)
   uint8_t *d_inPixels;
   uint8_t *d_inPixels2;
   uint8_t *d_grayPixels;
-  uint8_t *d_grayPixels2;
   float *d_filterX;
   float *d_filterY;
   uint8_t *d_edgePixels;
@@ -344,7 +342,6 @@ int main(int argc, char ** argv)
   CHECK(cudaMalloc(&d_inPixels, height * width * 3 * sizeof(uint8_t)));
   CHECK(cudaMalloc(&d_inPixels2, height * width * 3 * sizeof(uint8_t)));
 	CHECK(cudaMalloc(&d_grayPixels, height * width * sizeof(uint8_t)));
-  CHECK(cudaMalloc(&d_grayPixels2, height * width * sizeof(uint8_t)));
   CHECK(cudaMalloc(&d_filterX, 9 * sizeof(float)));
   CHECK(cudaMalloc(&d_filterY, 9 * sizeof(float)));
   CHECK(cudaMalloc(&d_edgePixels, width * height * sizeof(uint8_t)));
@@ -368,6 +365,7 @@ int main(int argc, char ** argv)
   // detect edge using device
   detectionEdge(d_grayPixels, d_edgePixels, width, height, d_filterX, d_filterY, 3, blockSize);
   uint8_t *map = (uint8_t*)malloc(width*sizeof(uint8_t));
+	int *seam = (int*)malloc(width*height*sizeof(int));
   int nSeams = atoi(argv[3]);
   for (int i = 0; i < nSeams; i++)
   {
@@ -376,12 +374,15 @@ int main(int argc, char ** argv)
 
       findSeam(d_edgePixels, d_map, d_seam, width, height, 1024);
       CHECK(cudaMemcpy(map, d_map, width * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+			CHECK(cudaMemcpy(seam, d_seam, width * height * sizeof(int), cudaMemcpyDeviceToHost));
+			checkSeam(map, inPixels, width, height, seam);
+			writePnm(inPixels, 3, width, height, argv[4]);
       cutSeam(map, d_inPixels, d_inPixels2, d_edgePixels, d_edgePixels2, width, height, d_seam, 1024);
     }
     else
     {
       //detectionEdge(d_grayPixels2, d_edgePixels, width, height, d_filterX, d_filterY, 3, blockSize);
-      findSeam(d_edgePixels2, d_map, d_seam, width, height, 1024);
+      findSeam(d_edgePixels, d_map, d_seam, width, height, 1024);
       CHECK(cudaMemcpy(map, d_map, width * sizeof(uint8_t), cudaMemcpyDeviceToHost));
       cutSeam(map, d_inPixels2, d_inPixels, d_edgePixels2, d_edgePixels, width, height, d_seam, 1024);
     }
@@ -396,7 +397,9 @@ int main(int argc, char ** argv)
     {
       CHECK(cudaMemcpy(outPixels, d_inPixels2, width * 3 * height * sizeof(uint8_t), cudaMemcpyDeviceToHost));
     }
+  //printf("%i",width);
   writePnm(outPixels, 3, width, height, argv[2]);
+
   //printf("success");
 
 	// Free memories
@@ -411,7 +414,4 @@ int main(int argc, char ** argv)
   cudaFree(d_edgePixels2);
   cudaFree(d_map);
   cudaFree(d_seam);
-	timer.Stop();
-	double time = timer.Elapsed();
-	printf("Processing time (use device): %f ms\n\n", time);
 }

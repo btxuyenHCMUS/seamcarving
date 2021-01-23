@@ -131,10 +131,10 @@ __global__ void convertRgb2GrayKernel(uint8_t * inPixels, int width, int height,
 	if (indexX < height && indexY < width)
 	{
 		int i = indexX * width + indexY;
-		uint8_t red = inPixels[3 * i];
-		uint8_t green = inPixels[3 * i + 1];
-		uint8_t blue = inPixels[3 * i + 2];
-		outPixels[i] = 0.299f*red + 0.587f*green + 0.114f*blue;
+		float red = 0.299*inPixels[3 * i];
+		float green = 0.587*inPixels[3 * i + 1];
+		float blue = 0.114*inPixels[3 * i + 2];
+		outPixels[i] = red + green + blue;
 	}
 
 }

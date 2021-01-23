@@ -194,11 +194,11 @@ __global__ void findSeamKernel(uint8_t* inEnergy, int width, int height,
       rowIndex--;
       if (c>0)
         val1 = outMap[(rowIndex + 1) * width + c - 1];
-      else val1 = 255;
+      else val1 = 10000;
       val2 = outMap[(rowIndex + 1) * width + c];
       if (c < width - 1)
         val3 = outMap[(rowIndex + 1) * width + c + 1];
-      else val3 = 255;
+      else val3 = 10000;
       minVal = min(val1, min(val2, val3));
       outMap[rowIndex * width + c] = minVal + inEnergy[rowIndex * width + c];
       if (minVal == val1)
@@ -255,7 +255,7 @@ void checkSeam(uint8_t *map, uchar3 *pixels, int width, int height, int *line)
   int k = 0;
   for (int c = 0; c < width; c++)
     {
-      if (map[c]<=map[k])
+      if (map[c]<map[k])
       {
         k = c;
       }
@@ -289,12 +289,8 @@ int main(int argc, char ** argv)
 		// Blur input image using device
 	uint8_t * map = (uint8_t *)malloc(width * height * sizeof(uint8_t));
   int *line = (int*)malloc(width * height * sizeof(int));
-	if (argc == 6)
-	{
-		blockSize.x = atoi(argv[4]);
-		blockSize.y = atoi(argv[5]);
-	}
-  findSeam(gray, width, height, map, line, 512);
+
+  findSeam(gray, width, height, map, line, 1024);
   checkSeam(map, inPixels, width, height, line);
 	// Write results to files
 	char * name = argv[3];
